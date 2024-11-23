@@ -1,0 +1,318 @@
+# Basic Pod
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+  labels:
+    app: myapp
+spec:
+  containers:
+  - name: myapp
+    image: nginx:1.14.2
+    ports:
+    - containerPort: 80
+    resources:
+      requests:
+        memory: "64Mi"
+        cpu: "250m"
+      limits:
+        memory: "128Mi"
+        cpu: "500m"
+
+# Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: myapp-deployment
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  strategy:
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: nginx:1.14.2
+        ports:
+        - containerPort: 80
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 80
+          initialDelaySeconds: 15
+          periodSeconds: 20
+
+# Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: myapp-service
+spec:
+  selector:
+    app: myapp
+  ports:
+  - port: 80
+    targetPort: 80
+  type: LoadBalancer
+
+# Ingress
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: myapp-ingress
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+spec:
+  rules:
+  - host: myapp.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: myapp-service
+            port:
+              number: 80
+
+# ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: myapp-config
+data:
+  database_url: "postgres://db:5432/myapp"
+  api_key: "development-key"
+  config.yaml: |
+    env: development
+    log_level: debug
+    feature_flags:
+      beta: true
+
+# Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: myapp-secrets
+type: Opaque
+data:
+  db_password: cGFzc3dvcmQxMjM=  # base64 encoded
+  api_key: c2VjcmV0LWtleQ==      # base64 encoded
+
+# PersistentVolumeClaim
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: myapp-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+  storageClassName: standard
+
+# StatefulSet
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: myapp-statefulset
+spec:
+  serviceName: myapp-headless
+  replicas: 3
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+    spec:
+      containers:
+      - name: myapp
+        image: myapp:1.0
+        volumeMounts:
+        - name: data
+          mountPath: /data
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes: [ "ReadWriteOnce" ]
+      resources:
+        requests:
+          storage: 1Gi
+
+# HorizontalPodAutoscaler
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: myapp-hpa
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: myapp-deployment
+  minReplicas: 1
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 50
+
+# NetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: myapp-network-policy
+spec:
+  podSelector:
+    matchLabels:
+      app: myapp
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          role: frontend
+    ports:
+    - protocol: TCP
+      port: 80
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          role: database
+    ports:
+    - protocol: TCP
+      port: 5432
+
+# ServiceAccount
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: myapp-service-account
+
+# Role
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pod-reader
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "watch", "list"]
+
+# RoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: read-pods
+subjects:
+- kind: ServiceAccount
+  name: myapp-service-account
+roleRef:
+  kind: Role
+  name: pod-reader
+  apiGroup: rbac.authorization.k8s.io
+
+# Common kubectl Commands
+# Cluster Management
+kubectl get nodes
+kubectl get pods --all-namespaces
+kubectl get services --all-namespaces
+kubectl get deployments --all-namespaces
+kubectl cluster-info
+kubectl version
+
+# Application Deployment
+kubectl apply -f deployment.yaml
+kubectl delete -f deployment.yaml
+kubectl rollout status deployment/myapp-deployment
+kubectl rollout history deployment/myapp-deployment
+kubectl rollout undo deployment/myapp-deployment
+kubectl scale deployment/myapp-deployment --replicas=5
+
+# Pod Management
+kubectl get pods
+kubectl describe pod myapp-pod
+kubectl logs myapp-pod
+kubectl exec -it myapp-pod -- /bin/bash
+kubectl port-forward myapp-pod 8080:80
+kubectl delete pod myapp-pod
+
+# Configuration
+kubectl create configmap myapp-config --from-file=config.yaml
+kubectl create secret generic myapp-secrets --from-literal=api_key=123456
+kubectl get configmaps
+kubectl get secrets
+
+# Namespace Management
+kubectl create namespace myapp
+kubectl get namespaces
+kubectl config set-context --current --namespace=myapp
+
+# Debugging
+kubectl describe node my-node
+kubectl top pods
+kubectl top nodes
+kubectl get events --sort-by=.metadata.creationTimestamp
+
+# Context and Configuration
+kubectl config view
+kubectl config get-contexts
+kubectl config use-context my-context
+kubectl config set-credentials kubeuser/foo.kubernetes.com --username=kubeuser --password=kubepassword
+
+# Resource Monitoring
+kubectl top pods
+kubectl top nodes
+kubectl get events
+kubectl describe hpa myapp-hpa
+
+# Yaml Generation (Dry Run)
+kubectl create deployment myapp --image=nginx --dry-run=client -o yaml
+kubectl create service clusterip myapp --tcp=80:80 --dry-run=client -o yaml
+
+# Multi-container Pod Example
+apiVersion: v1
+kind: Pod
+metadata:
+  name: myapp-pod
+spec:
+  containers:
+  - name: app
+    image: myapp:1.0
+    volumeMounts:
+    - name: shared-data
+      mountPath: /data
+  - name: sidecar
+    image: busybox
+    command: ["/bin/sh"]
+    args: ["-c", "while true; do echo sync; sleep 10; done"]
+    volumeMounts:
+    - name: shared-data
+      mountPath: /backup
+  volumes:
+  - name: shared-data
+    emptyDir: {}

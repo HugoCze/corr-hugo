@@ -1,0 +1,162 @@
+# Basic Python Web App Dockerfile
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+EXPOSE 5000
+CMD ["python", "app.py"]
+
+# Multi-stage Build for Node.js App
+FROM node:18 AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/build /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+# Python Development Dockerfile with Hot Reload
+FROM python:3.11-slim
+WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY . .
+CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--reload"]
+
+# PostgreSQL Database
+FROM postgres:15-alpine
+ENV POSTGRES_DB=myapp
+ENV POSTGRES_USER=myuser
+ENV POSTGRES_PASSWORD=mypassword
+COPY ./init.sql /docker-entrypoint-initdb.d/
+
+# Docker Compose for Web App + DB
+version: '3.8'
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - .:/app
+    environment:
+      - DATABASE_URL=postgresql://myuser:mypassword@db:5432/myapp
+    depends_on:
+      - db
+  
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_DB=myapp
+      - POSTGRES_USER=myuser
+      - POSTGRES_PASSWORD=mypassword
+
+volumes:
+  postgres_data:
+
+# Production-ready Nginx Configuration
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/nginx.conf
+COPY ssl/ /etc/nginx/ssl/
+COPY static/ /usr/share/nginx/html/
+EXPOSE 80 443
+CMD ["nginx", "-g", "daemon off;"]
+
+# Common .dockerignore file
+.git
+.gitignore
+.env
+*.pyc
+__pycache__
+node_modules
+npm-debug.log
+Dockerfile
+.dockerignore
+.pytest_cache
+coverage
+dist
+build
+
+# Docker Commands Reference
+# Build an image
+docker build -t myapp:latest .
+
+# Run a container
+docker run -d -p 5000:5000 --name myapp myapp:latest
+
+# Build and run with docker-compose
+docker-compose up -d
+
+# View logs
+docker logs -f myapp
+
+# Stop and remove container
+docker stop myapp && docker rm myapp
+
+# List containers
+docker ps -a
+
+# List images
+docker images
+
+# Remove unused resources
+docker system prune -a
+
+# Execute command in running container
+docker exec -it myapp bash
+
+# Copy files to/from container
+docker cp ./local/file myapp:/app/file
+docker cp myapp:/app/file ./local/file
+
+# Save and load images
+docker save myapp:latest > myapp.tar
+docker load < myapp.tar
+
+# Network commands
+docker network create mynetwork
+docker network connect mynetwork myapp
+
+# Volume commands
+docker volume create mydata
+docker volume ls
+docker volume rm mydata
+
+# Docker Compose commands
+docker-compose up -d
+docker-compose down
+docker-compose logs -f
+docker-compose ps
+docker-compose exec web bash
+
+# Health check in Dockerfile
+HEALTHCHECK --interval=30s --timeout=3s \
+  CMD curl -f http://localhost:5000/health || exit 1
+
+# Multi-platform build
+FROM --platform=$BUILDPLATFORM golang:1.19-alpine AS builder
+ARG TARGETARCH
+WORKDIR /app
+COPY . .
+RUN GOARCH=$TARGETARCH go build -o main
+
+FROM alpine
+COPY --from=builder /app/main /app/main
+CMD ["/app/main"]
+
+# Development environment with VS Code dev containers
+FROM mcr.microsoft.com/vscode/devcontainers/python:3.11
+RUN apt-get update && apt-get install -y \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
